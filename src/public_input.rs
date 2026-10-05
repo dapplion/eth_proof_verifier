@@ -16,9 +16,9 @@
 /// ++ `schema_id` (2).
 pub const ENCODED_LEN: usize = 43;
 
-/// The guests' sentinel `schema_id`, committed when a guest could not decode its input or could
-/// not produce a validation result. The rest of the result is then zero, so such a proof can never
-/// match a real public input.
+/// The guests' sentinel `schema_id`, committed when a guest could not decode its input or could not
+/// produce a validation result. No beacon node derives it, so a request carrying it is refused
+/// rather than answered.
 pub const UNDECODABLE_SCHEMA_ID: u16 = 0;
 
 /// The four fields a beacon node derives and a guest commits to.
@@ -26,7 +26,8 @@ pub const UNDECODABLE_SCHEMA_ID: u16 = 0;
 pub struct PublicInput {
     /// `hash_tree_root` of the `NewPayloadRequest` whose execution the proof certifies.
     pub new_payload_request_root: [u8; 32],
-    /// Whether the guest accepted the payload. A verifier only treats `true` as a validity signal.
+    /// Whether the guest accepted the payload. Only `true` is a validity signal, so a request that
+    /// asks about anything else is refused rather than answered.
     pub successful_validation: bool,
     /// The chain the payload was validated against, which stops cross-chain replay.
     pub chain_id: u64,

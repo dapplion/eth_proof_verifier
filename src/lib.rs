@@ -6,5 +6,10 @@
 
 pub mod api;
 pub mod backend;
+pub mod hex_bytes;
 pub mod public_input;
 pub mod registry;
+
+/// EIP-8025 `MAX_PROOF_SIZE`: the largest `proof_data` the spec admits, and so the largest request
+/// body this verifier reads. The spec's bound is inclusive.
+pub const MAX_PROOF_SIZE: usize = 4_194_304;

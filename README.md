@@ -3,11 +3,11 @@
 Verify [EIP-8025](https://eips.ethereum.org/EIPS/eip-8025) execution proofs. One binary, no setup, ~30 ms per proof.
 
 ```sh
-cargo install --git https://github.com/dapplion/eth_proof_verifier   # or a release binary
+cargo install --locked --git https://github.com/dapplion/eth_proof_verifier   # or a release binary
 eth_proof_verifier --listen-address 127.0.0.1:8025
 ```
 
-Lighthouse: `--proof-engine-endpoint http://127.0.0.1:8025`.
+Lighthouse: `--proof-engine-endpoint http://127.0.0.1:8025`, once its client sends the four public-input fields the current spec defines.
 
 ## API
 
@@ -25,6 +25,6 @@ Immutable `(system, guest, version)` triples. `--proof-types FILE` adds more.
 
 ## Adding a proving system
 
-PRs welcome: implement `ProofVerifier::verify`, add a row. See `src/backend/sp1.rs`, ~90 lines. Bring a crates.io verifier at a pinned version, a published verifying key per guest, and a real proof as a fixture. ZisK and OpenVM wait on exactly that.
+PRs welcome: implement `ProofVerifier::verify`, add a row. See `src/backend/sp1.rs`, ~130 lines. Bring a crates.io verifier at a pinned version, a published verifying key per guest, and a real proof as a fixture. ZisK and OpenVM wait on exactly that.
 
 Apache-2.0 OR MIT. Guests, keys and fixture from [ere](https://github.com/eth-act/ere).

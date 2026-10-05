@@ -17,15 +17,26 @@ pub trait ProofVerifier: Send + Sync + 'static {
     fn verify(&self, proof: &[u8]) -> Result<Vec<u8>, Rejection>;
 }
 
-/// Why a proof was not accepted. Every rejection is an answer of `INVALID`, and the message is
-/// reported so an operator can tell a corrupt encoding from a proof that simply does not verify.
+/// Why a proof was not accepted. Either way the answer is `INVALID`, but the two are worth telling
+/// apart: bytes that never reached the cryptography are a different problem from a proof the
+/// cryptography turned down, and only the second says anything about a payload.
 #[derive(Debug, thiserror::Error)]
-#[error("{0}")]
-pub struct Rejection(String);
+pub enum Rejection {
+    /// The bytes are not a proof of the shape this proof system expects.
+    #[error("{0}")]
+    Malformed(String),
+    /// The proof is well formed, and does not verify.
+    #[error("{0}")]
+    Unverified(String),
+}
 
 impl Rejection {
-    pub fn new(reason: impl Display) -> Self {
-        Self(reason.to_string())
+    pub fn malformed(reason: impl Display) -> Self {
+        Self::Malformed(reason.to_string())
+    }
+
+    pub fn unverified(reason: impl Display) -> Self {
+        Self::Unverified(reason.to_string())
     }
 }
 

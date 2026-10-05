@@ -2,6 +2,7 @@
 name = "eth_proof_verifier"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 description = "A standalone verifier for EIP-8025 execution proofs"
 repository = "https://github.com/dapplion/eth_proof_verifier"
 license = "Apache-2.0 OR MIT"
@@ -29,6 +30,3 @@ sp1-verifier = "=6.8.1"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
-
-[profile.release]
-opt-level = 3

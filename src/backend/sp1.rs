@@ -16,8 +16,13 @@ use crate::{
     registry::PROGRAM_VK_LEN,
 };
 
-/// EIP-8025 `MAX_PROOF_SIZE`, bounding what a length prefix inside a proof can allocate.
-const MAX_PROOF_SIZE: usize = 4_194_304;
+/// Ceiling on what a length prefix inside a proof may ask the decoder to allocate.
+///
+/// This is a denial-of-service guard, not a bound on the proof: bincode counts a cumulative
+/// in-memory claim, and a decoded value can need more memory than its wire form — an array of
+/// strings claims its padded size, for one. Setting it to `MAX_PROOF_SIZE` would therefore refuse
+/// some proofs the spec admits. `ere` uses the same 64 MiB for the same reason.
+const MAX_DECODE_BYTES: usize = 64 * 1024 * 1024;
 
 /// Number of limbs the packed verifying key is manipulated in.
 const PROGRAM_VK_LIMBS: usize = PROGRAM_VK_LEN / 8;
@@ -49,15 +54,15 @@ impl ProofVerifier for Sp1Verifier {
     fn verify(&self, proof_bytes: &[u8]) -> Result<Vec<u8>, Rejection> {
         let (proof, consumed): (ProofFromNetwork, usize) = bincode::serde::decode_from_slice(
             proof_bytes,
-            bincode::config::legacy().with_limit::<MAX_PROOF_SIZE>(),
+            bincode::config::legacy().with_limit::<MAX_DECODE_BYTES>(),
         )
-        .map_err(Rejection::new)?;
+        .map_err(Rejection::malformed)?;
         if consumed != proof_bytes.len() {
-            return Err(Rejection::new("trailing bytes after the proof"));
+            return Err(Rejection::malformed("trailing bytes after the proof"));
         }
 
         let compressed = proof.proof.try_as_compressed_ref().ok_or_else(|| {
-            Rejection::new(format!(
+            Rejection::malformed(format!(
                 "expected a compressed proof, got {:?}",
                 proof.mode()
             ))
@@ -67,12 +72,14 @@ impl ProofVerifier for Sp1Verifier {
         // not a validation result.
         let recursion_public_values = compressed.proof.public_values.as_slice();
         if recursion_public_values.len() != RECURSIVE_PROOF_NUM_PV_ELTS {
-            return Err(Rejection::new("proof does not commit to an exit code"));
+            return Err(Rejection::malformed(
+                "proof does not commit to an exit code",
+            ));
         }
         let recursion_public_values: &RecursionPublicValues<_> = recursion_public_values.borrow();
         let exit_code = recursion_public_values.exit_code.as_canonical_u32();
         if exit_code != 0 {
-            return Err(Rejection::new(format!(
+            return Err(Rejection::unverified(format!(
                 "guest exited with code {exit_code}"
             )));
         }
@@ -80,7 +87,7 @@ impl ProofVerifier for Sp1Verifier {
         let public_values = proof.public_values.as_slice();
         RECURSION_VERIFIER
             .verify_compressed_with_public_values(compressed, public_values, &self.program_vk)
-            .map_err(Rejection::new)?;
+            .map_err(Rejection::unverified)?;
 
         Ok(public_values.to_vec())
     }
@@ -136,10 +143,25 @@ mod tests {
         assert!(decode_program_vk(&[0; 33]).is_err());
     }
 
-    /// All ones packs field elements at or above the field order, and must not be accepted as a
-    /// digest.
+    /// All ones does not fit in eight 31-bit digits, so bits are left over after unpacking.
     #[test]
-    fn rejects_a_non_canonical_program_vk() {
+    fn rejects_a_program_vk_that_does_not_unpack() {
         assert!(decode_program_vk(&[0xff; 32]).is_err());
+    }
+
+    /// A key may unpack cleanly and still name no digest, because an element at or above the field
+    /// order is not a field element.
+    ///
+    /// This case is why the order check cannot be dropped. `from_canonical_u32` reduces modulo the
+    /// order with only a `debug_assert`, and this crate runs in release, so without the check these
+    /// bytes would silently bind to the same program as an all-zero digest: the leading element is
+    /// exactly the order, which reduces to zero.
+    #[test]
+    fn rejects_a_program_vk_holding_a_non_field_element() {
+        let at_the_order =
+            hex::decode("00fe000002000000000000000000000000000000000000000000000000000000")
+                .expect("hex");
+
+        assert!(decode_program_vk(&at_the_order).is_err());
     }
 }
