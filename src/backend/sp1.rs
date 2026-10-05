@@ -1,0 +1,145 @@
+//! SP1 proof verification.
+//!
+//! The verifying key, the proof encoding and the exit-code commitment are all conventions of the
+//! prover rather than of SP1 itself, so they have to match the provers in the wild. They follow
+//! `eth-act/ere`'s `ere-verifier-sp1`, which is what the `ere-guests` artifacts are produced by.
+
+use std::{array::from_fn, borrow::Borrow, sync::LazyLock};
+
+use sp1_hypercube::{DIGEST_SIZE, PrimeField32};
+use sp1_primitives::SP1Field;
+use sp1_recursion_executor::{RECURSIVE_PROOF_NUM_PV_ELTS, RecursionPublicValues};
+use sp1_verifier::{ProofFromNetwork, compressed::SP1CompressedVerifier};
+
+use crate::{
+    backend::{InvalidProgramVk, ProofVerifier, Rejection},
+    registry::PROGRAM_VK_LEN,
+};
+
+/// EIP-8025 `MAX_PROOF_SIZE`, bounding what a length prefix inside a proof can allocate.
+const MAX_PROOF_SIZE: usize = 4_194_304;
+
+/// Number of limbs the packed verifying key is manipulated in.
+const PROGRAM_VK_LIMBS: usize = PROGRAM_VK_LEN / 8;
+
+/// Width of the slot each field element occupies in the packed verifying key.
+const WORD_BITS: u32 = 31;
+
+/// The recursion verifier is shared by every SP1 proof type, and building it is the expensive part
+/// of SP1 verification. One instance serves all of them.
+static RECURSION_VERIFIER: LazyLock<SP1CompressedVerifier> =
+    LazyLock::new(SP1CompressedVerifier::new);
+
+/// Verifier bound to one compiled guest program.
+pub struct Sp1Verifier {
+    /// Poseidon2 digest of the program's SP1 verifying key.
+    program_vk: [SP1Field; DIGEST_SIZE],
+}
+
+impl Sp1Verifier {
+    pub fn new(program_vk: &[u8]) -> Result<Self, InvalidProgramVk> {
+        LazyLock::force(&RECURSION_VERIFIER);
+        Ok(Self {
+            program_vk: decode_program_vk(program_vk)?,
+        })
+    }
+}
+
+impl ProofVerifier for Sp1Verifier {
+    fn verify(&self, proof_bytes: &[u8]) -> Result<Vec<u8>, Rejection> {
+        let (proof, consumed): (ProofFromNetwork, usize) = bincode::serde::decode_from_slice(
+            proof_bytes,
+            bincode::config::legacy().with_limit::<MAX_PROOF_SIZE>(),
+        )
+        .map_err(Rejection::new)?;
+        if consumed != proof_bytes.len() {
+            return Err(Rejection::new("trailing bytes after the proof"));
+        }
+
+        let compressed = proof.proof.try_as_compressed_ref().ok_or_else(|| {
+            Rejection::new(format!(
+                "expected a compressed proof, got {:?}",
+                proof.mode()
+            ))
+        })?;
+
+        // A guest that exited non-zero never reached its commitment, so whatever it left behind is
+        // not a validation result.
+        let recursion_public_values = compressed.proof.public_values.as_slice();
+        if recursion_public_values.len() != RECURSIVE_PROOF_NUM_PV_ELTS {
+            return Err(Rejection::new("proof does not commit to an exit code"));
+        }
+        let recursion_public_values: &RecursionPublicValues<_> = recursion_public_values.borrow();
+        let exit_code = recursion_public_values.exit_code.as_canonical_u32();
+        if exit_code != 0 {
+            return Err(Rejection::new(format!(
+                "guest exited with code {exit_code}"
+            )));
+        }
+
+        let public_values = proof.public_values.as_slice();
+        RECURSION_VERIFIER
+            .verify_compressed_with_public_values(compressed, public_values, &self.program_vk)
+            .map_err(Rejection::new)?;
+
+        Ok(public_values.to_vec())
+    }
+}
+
+/// Decode the 32-byte verifying key SP1 provers publish.
+///
+/// It is `HashableKey::bytes32`: the digest's field elements as base-`2^31` digits of a big endian
+/// integer, most significant element first.
+fn decode_program_vk(bytes: &[u8]) -> Result<[SP1Field; DIGEST_SIZE], InvalidProgramVk> {
+    const WORD_MASK: u64 = (1 << WORD_BITS) - 1;
+
+    if bytes.len() != PROGRAM_VK_LEN {
+        return Err(InvalidProgramVk::new(format!(
+            "expected {PROGRAM_VK_LEN} bytes, got {}",
+            bytes.len()
+        )));
+    }
+
+    let mut limbs: [u64; PROGRAM_VK_LIMBS] = from_fn(|i| {
+        let offset = PROGRAM_VK_LEN - 8 * (i + 1);
+        u64::from_be_bytes(from_fn(|j| bytes[offset + j]))
+    });
+    let mut words = [0u32; DIGEST_SIZE];
+    for word in words.iter_mut().rev() {
+        *word = (limbs[0] & WORD_MASK) as u32;
+        for i in 0..PROGRAM_VK_LIMBS - 1 {
+            limbs[i] = (limbs[i] >> WORD_BITS) | (limbs[i + 1] << (u64::BITS - WORD_BITS));
+        }
+        limbs[PROGRAM_VK_LIMBS - 1] >>= WORD_BITS;
+    }
+
+    // Anything left over, or an element at or above the field order, is not a packed digest.
+    if limbs != [0; PROGRAM_VK_LIMBS] || words.iter().any(|word| *word >= SP1Field::ORDER_U32) {
+        return Err(InvalidProgramVk::new("not a canonical packed digest"));
+    }
+    Ok(words.map(from_canonical_u32))
+}
+
+/// `from_canonical_u32` reaches the field element through its trait bound, which spares this module
+/// an import of the trait that declares it.
+fn from_canonical_u32<F: PrimeField32>(word: u32) -> F {
+    F::from_canonical_u32(word)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_a_program_vk_of_the_wrong_length() {
+        assert!(decode_program_vk(&[0; 31]).is_err());
+        assert!(decode_program_vk(&[0; 33]).is_err());
+    }
+
+    /// All ones packs field elements at or above the field order, and must not be accepted as a
+    /// digest.
+    #[test]
+    fn rejects_a_non_canonical_program_vk() {
+        assert!(decode_program_vk(&[0xff; 32]).is_err());
+    }
+}

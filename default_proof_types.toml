@@ -1,0 +1,29 @@
+# Proof types this binary serves out of the box.
+#
+# A proof type names an immutable triple of proof system, guest program and version. It is not a
+# proof system on its own: a proof is checked against one specific compiled program, so changing
+# the guest or either version takes a NEW proof type rather than a change to an existing one.
+#
+# EIP-8025 fixes the supported set at {1, 2, 3} but assigns no meanings to the numbers, and expects
+# further values to be socialised out of band. These assignments are therefore ours, and a `--config`
+# file overrides or extends them by proof type number.
+#
+# Guest programs and their verifying keys come from eth-act/ere-guests v0.17.1. A verifying key is
+# only meaningful for the proof-system version the guest was compiled and proved with, which is why
+# every entry carries that version and why they all agree with the pinned `sp1-verifier`.
+
+[[proof_types]]
+proof_type = 1
+proof_system = "sp1"
+proof_system_version = "6.4.0"
+guest = "reth"
+guest_version = "0.1.0-rc.3"
+program_vk = "00a03cbfa95559cfee3b45ef925f3f7a631181e35e774e92b040277d893511dd"
+
+[[proof_types]]
+proof_type = 2
+proof_system = "sp1"
+proof_system_version = "6.4.0"
+guest = "ethrex"
+guest_version = "27.0.0"
+program_vk = "00f4d73c54dd9f0ae100b9736e80804cd03ba7e5093127d83ef4ca616ee8d8d3"

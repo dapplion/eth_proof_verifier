@@ -1,0 +1,30 @@
+[package]
+name = "eth_proof_verifier"
+version = "0.1.0"
+edition = "2024"
+description = "A standalone verifier for EIP-8025 execution proofs"
+repository = "https://github.com/dapplion/eth_proof_verifier"
+license = "Apache-2.0 OR MIT"
+
+[dependencies]
+axum = "0.8"
+bincode = { version = "2", features = ["alloc", "serde"] }
+clap = { version = "4", features = ["derive"] }
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+toml = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# SP1. Pinned: a verifying key is only meaningful for the SP1 version the guest was compiled and
+# proved with, so the proof types this binary serves fix this version.
+sp1-hypercube = "6.4.0"
+sp1-primitives = "6.4.0"
+sp1-recursion-executor = "6.4.0"
+sp1-verifier = "6.4.0"
+
+[profile.release]
+opt-level = 3

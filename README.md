@@ -79,19 +79,50 @@ An unknown `proof_type` is **not** reported as `INVALID`. It is a distinct error
 
 The proof types this verifier can check, which a beacon node needs in order to advertise the ENR `eproof` field and to answer the `ExecutionProofStatus` handshake.
 
+## Usage
+
+```
+eth_proof_verifier [--listen-address 127.0.0.1:8025] [--proof-types FILE]
+```
+
+Then point your beacon node at it. On Lighthouse that is `--proof-engine-endpoint http://127.0.0.1:8025`.
+
+## Proof types
+
+A `ProofType` names an immutable triple of proof system, guest program and version. It is not a proof system on its own: a proof is checked against one specific compiled program, so changing the guest or either version takes a new proof type, never a redefinition of an existing one.
+
+EIP-8025 fixes the supported set at `{1, 2, 3}` but assigns the numbers no meanings, and expects further values to be socialised out of band. These assignments are therefore this project's, and `--proof-types` overrides or extends them by number:
+
+| `proof_type` | Proof system | Guest |
+| --- | --- | --- |
+| 1 | SP1 6.4.0 | reth 0.1.0-rc.3 |
+| 2 | SP1 6.4.0 | ethrex 27.0.0 |
+
+Guest programs and their verifying keys come from [`eth-act/ere-guests`](https://github.com/eth-act/ere-guests) v0.17.1 and the execution clients' own releases. A verifying key is only meaningful for the proof-system version its guest was compiled and proved with, which is why every entry carries that version and why they all agree with the pinned `sp1-verifier`.
+
+```toml
+[[proof_types]]
+proof_type = 3
+proof_system = "sp1"
+proof_system_version = "6.4.0"
+guest = "zesu"
+guest_version = "tests-glamsterdam-devnet@v8.1.4"
+program_vk = "00a03cbf...dd"
+```
+
 ## Proof systems
 
-A `ProofType` names an immutable triple of proof system, guest program and version. It is not a proof system on its own: a proof is checked against one specific guest program, so changing the guest or either version means a new proof type, never a redefinition of an existing one.
+| Proof system | Status |
+| --- | --- |
+| SP1 | supported, via `sp1-verifier`, compressed proofs |
+| ZisK | blocked |
+| OpenVM | blocked |
 
-Guest programs and their verifying keys come from [`eth-act/ere-guests`](https://github.com/eth-act/ere-guests) and the execution clients' own releases.
+Both of the others are blocked on published artifacts rather than unwanted, and each has a backend slot waiting.
 
-| Proof system | Verifier | Status |
-| --- | --- | --- |
-| SP1 | `sp1-verifier`, compressed proofs | supported |
-| ZisK | `zisk-verifier`, VadcopFinal proofs | planned |
-| OpenVM | — | blocked |
+**ZisK** verification needs three things to agree: the verifier crate version, the guest program's verifying key, and the proof system's aggregation verifying key. `zisk-verifier` is on crates.io for 1.1.0-alpha through 1.3.1-alpha, and guest keys exist for v1.1.0-alpha and v1.2.0-alpha, but of the aggregation keys **only 1.3.1-alpha is published** — and no guest key exists for it. No obtainable combination lines up.
 
-OpenVM is blocked rather than unwanted. Its published guest programs are built against `v2.1.0-preview`, crates.io carries only 2.0.x, and the one verifier that matches those guests lives on unmerged branches of personal forks. There is nothing to pin. The backend slot exists and the entry appears when upstream releases a matching version.
+**OpenVM** guest programs are built against `v2.1.0-preview`. crates.io carries only 2.0.x, and the one verifier matching those guests lives on unmerged branches of personal forks of both `openvm` and `stark-backend`. There is nothing to pin.
 
 ## Where this deviates from the specification
 
@@ -107,7 +138,11 @@ A zero `schema_id` is the guests' sentinel for "could not decode the input or pr
 
 ## Status
 
-Early. The design is settled and the implementation is in progress; the API above may still move.
+Early, but working. SP1 verification is implemented and tested against a real proof, and the API above may still move.
+
+`tests/sp1_verifier.rs` runs the SP1 backend against a genuine 1.27 MB SP1 compressed proof. It checks that the proof verifies and returns exactly the bytes its guest committed to, and that each of a different program, a corrupted proof, trailing bytes, a declared length beyond the input, and **edited public values** is rejected. That last one is the property the public-input binding rests on: if the bytes a proof carries were not authenticated by the proof, a valid proof of one payload could be relabelled as a proof of another.
+
+On one core of a 2026 x86 server, verifying that proof takes about **30 ms** in roughly **7 MB** of resident memory. The binary is about 5.5 MB and needs nothing beside it.
 
 ## Credits
 
