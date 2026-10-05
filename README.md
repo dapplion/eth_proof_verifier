@@ -56,9 +56,9 @@ program_vk = "00a03cbf…dd"
 
 ## Add your proving system
 
-**zk teams: PRs very welcome.** A backend is small — implement `ProofVerifier::verify`, returning the bytes your guest committed to, add a `ProofSystem` variant, and add a row to `default_proof_types.toml`. Everything else is shared. See `src/backend/sp1.rs`, which is about 80 lines of real work.
+**zk teams: PRs very welcome.** A backend is small — implement `ProofVerifier::verify`, returning the bytes your guest committed to, add a `ProofSystem` variant, and add a row to `default_proof_types.toml`. Everything else is shared. See `src/backend/sp1.rs`: about 90 lines of code.
 
-Two asks, both so operators get a binary that just works:
+Three asks, all so that operators get a binary that just works:
 
 - **Your verifier on crates.io, at a pinned version.** Not a git branch.
 - **A verifying key per guest program**, published and small enough to compile in. SP1's is 32 bytes.
