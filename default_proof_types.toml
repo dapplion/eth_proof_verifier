@@ -5,12 +5,12 @@
 # the guest or either version takes a NEW proof type rather than a change to an existing one.
 #
 # EIP-8025 fixes the supported set at {1, 2, 3} but assigns no meanings to the numbers, and expects
-# further values to be socialised out of band. These assignments are therefore ours, and a `--config`
+# further values to be socialised out of band. These assignments are therefore ours, and a `--proof-types`
 # file overrides or extends them by proof type number.
 #
 # Guest programs and their verifying keys come from eth-act/ere-guests v0.17.1. A verifying key is
-# only meaningful for the proof-system version the guest was compiled and proved with, which is why
-# every entry carries that version and why they all agree with the pinned `sp1-verifier`.
+# tied to the guest build, so `proof_system_version` records the version the guest was compiled and
+# proved with. It is not the verifier's own version: one pinned verifier reads several of these.
 
 [[proof_types]]
 proof_type = 1

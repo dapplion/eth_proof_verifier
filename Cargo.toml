@@ -19,12 +19,13 @@ toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# SP1. Pinned: a verifying key is only meaningful for the SP1 version the guest was compiled and
-# proved with, so the proof types this binary serves fix this version.
-sp1-hypercube = "6.4.0"
-sp1-primitives = "6.4.0"
-sp1-recursion-executor = "6.4.0"
-sp1-verifier = "6.4.0"
+# SP1, pinned exactly so a build is reproducible. This is the version that verifies; a guest's own
+# build version is recorded per proof type instead, because one verifier reads proofs from several.
+# 6.4.0 no longer builds from crates.io at all: SP1's internal `slop-*` ranges have drifted.
+sp1-hypercube = "=6.8.1"
+sp1-primitives = "=6.8.1"
+sp1-recursion-executor = "=6.8.1"
+sp1-verifier = "=6.8.1"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

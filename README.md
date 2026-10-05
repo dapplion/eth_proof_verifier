@@ -37,10 +37,12 @@ An unknown `proof_type` is `400`, never `INVALID` — a validator silently rejec
 
 A proof type is an immutable `(proof system, guest program, version)` triple. Change any part and it takes a new number.
 
-| `proof_type` | system | guest |
-| --- | --- | --- |
-| 1 | SP1 6.4.0 | reth 0.1.0-rc.3 |
-| 2 | SP1 6.4.0 | ethrex 27.0.0 |
+| `proof_type` | system | guest | guest built with |
+| --- | --- | --- | --- |
+| 1 | SP1 | reth 0.1.0-rc.3 | SP1 6.4.0 |
+| 2 | SP1 | ethrex 27.0.0 | SP1 6.4.0 |
+
+The verifier itself is `sp1-verifier` 6.8.1, pinned exactly, and reads proofs from all of these builds — a verifying key is tied to the guest build, not to the verifier.
 
 EIP-8025 fixes the set at `{1, 2, 3}` but assigns no meanings, so these are ours. Override or extend by number:
 
