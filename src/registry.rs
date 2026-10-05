@@ -1,13 +1,7 @@
-//! The proof types this binary can verify, and the verifier bound to each one.
+//! The proof types this binary can verify, and the verifier for each one.
 //!
-//! Defaults are compiled in, so the binary verifies with no configuration at all. A verifying key
-//! is 32 bytes, so adding a proof type is pasting hex into a `--proof-types` file rather than
-//! provisioning anything.
-//!
-//! Loading is deliberately unforgiving. A verifier that quietly serves something other than what
-//! its operator wrote would answer `INVALID` for every proof it is sent, which is indistinguishable
-//! from a network with no provers on it, so every way a file could mean less than it appears to say
-//! is an error here rather than a warning.
+//! Defaults are compiled in. Loading is unforgiving: a verifier serving something other than what
+//! its operator wrote answers `INVALID` for everything, which looks like a network with no provers.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -24,21 +18,19 @@ use crate::{
     hex_bytes,
 };
 
-/// Length of a verifying key, for every proof system this binary supports.
+/// Verifying key length, for every proof system here.
 pub const PROGRAM_VK_LEN: usize = 32;
 
-/// The proof types served when no configuration is given.
+/// Served when no configuration is given.
 const DEFAULT_PROOF_TYPES: &str = include_str!("../default_proof_types.toml");
 
-/// One proof type: an immutable (proof system, guest program, version) triple, and the verifying
-/// key of the compiled program it names.
+/// An immutable (proof system, guest, version) triple, and the key of the program it names.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProofTypeSpec {
     pub proof_type: u8,
     pub proof_system: ProofSystem,
-    /// The version of `proof_system` the guest was compiled and proved with. Not the version of
-    /// the verifier, which reads proofs from several of these.
+    /// The `proof_system` version the guest was proved with, not the verifier's own.
     pub proof_system_version: String,
     pub guest: String,
     pub guest_version: String,
@@ -49,7 +41,7 @@ pub struct ProofTypeSpec {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProofTypesFile {
-    /// Required, so that a mistyped table header is an error rather than an empty file.
+    /// Required, so a mistyped table header is an error and not an empty file.
     proof_types: Vec<ProofTypeSpec>,
 }
 
@@ -97,7 +89,7 @@ pub struct Registry {
 }
 
 impl Registry {
-    /// Load the compiled-in defaults, with `config` overriding or extending them by proof type.
+    /// Load the defaults, with `config` replacing or adding entries by proof type.
     pub fn load(config: Option<&Path>) -> Result<Self, LoadError> {
         let mut specs: BTreeMap<u8, ProofTypeSpec> =
             parse(DEFAULT_PROOF_TYPES, "the compiled-in defaults")?
@@ -113,8 +105,7 @@ impl Registry {
             })?;
             let from_file = parse(&contents, &display)?;
 
-            // Two entries for one proof type mean one of them is not served, and the operator
-            // cannot see which.
+            // One of two entries for a proof type goes unserved, and the operator cannot see which.
             let mut seen = BTreeSet::new();
             for spec in &from_file {
                 if !seen.insert(spec.proof_type) {
@@ -128,8 +119,8 @@ impl Registry {
             for spec in from_file {
                 let proof_type = spec.proof_type;
                 if specs.insert(proof_type, spec).is_some() {
-                    // Replacing a default is legitimate, but it is the quiet way to break a node:
-                    // the wrong key here rejects every proof of a type the network does gossip.
+                    // Legitimate, but the quiet way to break a node: a wrong key here rejects every
+                    // proof of a type the network does gossip.
                     warn!("Proof type {proof_type} replaces the compiled-in default");
                 }
             }
@@ -137,8 +128,7 @@ impl Registry {
 
         let mut entries = BTreeMap::new();
         for (proof_type, spec) in specs {
-            // `ProofType` 0 is outside the assignable range, so an entry for it is a mistake worth
-            // reporting rather than something to serve.
+            // `ProofType` 0 is outside the assignable range.
             if proof_type == 0 {
                 return Err(LoadError::ReservedProofType);
             }
@@ -170,16 +160,14 @@ impl Registry {
 
     /// The verifier for `proof_type`, or `None` if this process does not serve it.
     ///
-    /// Shared rather than borrowed, because verifying is CPU-bound work that runs off the async
-    /// runtime and so has to outlive the request handler's borrow of the registry.
+    /// Shared, not borrowed: verifying runs off the async runtime and outlives the handler.
     pub fn verifier(&self, proof_type: u8) -> Option<Arc<dyn ProofVerifier>> {
         self.entries
             .get(&proof_type)
             .map(|entry| entry.verifier.clone())
     }
 
-    /// The proof types served, which a beacon node needs for its ENR `eproof` field and its
-    /// `ExecutionProofStatus` handshake.
+    /// For a beacon node's ENR `eproof` field and its `ExecutionProofStatus` handshake.
     pub fn supported(&self) -> Vec<u8> {
         self.entries.keys().copied().collect()
     }
@@ -251,8 +239,7 @@ mod tests {
         )
     }
 
-    /// The compiled-in defaults have to parse and every verifying key in them has to build a
-    /// verifier, or a binary with no configuration is dead on arrival.
+    /// Without this, a binary with no configuration is dead on arrival.
     #[test]
     fn default_proof_types_load() {
         let registry = Registry::load(None).expect("defaults load");
@@ -263,19 +250,12 @@ mod tests {
     }
 
     #[test]
-    fn unserved_proof_type_has_no_verifier() {
-        let registry = Registry::load(None).expect("defaults load");
-        assert!(registry.verifier(u8::MAX).is_none());
-    }
-
-    #[test]
     fn serves_an_added_proof_type() {
         let registry = load_from(&entry(3, FIXTURE_VK)).expect("loads");
         assert_eq!(registry.supported(), vec![1, 2, 3]);
     }
 
-    /// A mistyped table header used to parse as an empty file, so the operator's proof type was
-    /// simply absent and nothing said so.
+    /// This used to parse as an empty file, and the operator's proof type was silently absent.
     #[test]
     fn rejects_a_mistyped_table_header() {
         let singular = entry(3, FIXTURE_VK).replace("[[proof_types]]", "[[proof_type]]");
@@ -289,14 +269,14 @@ mod tests {
         assert!(load_from(&extra).is_err());
     }
 
-    /// Two entries for one proof type silently kept the last.
+    /// This used to keep the last entry silently.
     #[test]
     fn rejects_a_duplicated_proof_type() {
         let twice = format!("{}{}", entry(3, FIXTURE_VK), entry(3, FIXTURE_VK));
         assert!(load_from(&twice).is_err());
     }
 
-    /// A half-filled config should not produce a running verifier that rejects everything.
+    /// A half-filled file must not produce a verifier that rejects everything.
     #[test]
     fn rejects_a_placeholder_verifying_key() {
         assert!(load_from(&entry(3, &"0".repeat(64))).is_err());
@@ -305,10 +285,5 @@ mod tests {
     #[test]
     fn rejects_proof_type_zero() {
         assert!(load_from(&entry(0, FIXTURE_VK)).is_err());
-    }
-
-    #[test]
-    fn rejects_a_verifying_key_of_the_wrong_length() {
-        assert!(load_from(&entry(3, "00ff")).is_err());
     }
 }

@@ -1,8 +1,7 @@
-//! The HTTP surface: verify a proof, and say which proof types can be verified.
+//! The HTTP surface: verify a proof, and list the proof types.
 //!
-//! The public input travels as query parameters and the proof as the request body, so neither side
-//! needs an SSZ codec. Unknown parameters are ignored, so a beacon node may send more than this
-//! verifier reads.
+//! The public input travels as query parameters and the proof as the body, so neither side needs an
+//! SSZ codec. Unknown parameters are ignored.
 
 use std::sync::Arc;
 
@@ -27,11 +26,8 @@ use crate::{
 #[derive(Clone)]
 struct Verifier {
     registry: Arc<Registry>,
-    /// Caps how many proofs are verified at once.
-    ///
-    /// Verification is tens of milliseconds of pure CPU. Without a cap, a burst of proofs occupies
-    /// every blocking thread and every byte of every body at the same time, and the cheap routes
-    /// queue behind arithmetic.
+    /// Caps concurrent verifications. Each is tens of milliseconds of CPU and holds its whole body,
+    /// so without a cap a burst starves the cheap routes.
     concurrency: Arc<Semaphore>,
 }
 
@@ -95,9 +91,8 @@ async fn verify_execution_proof(
 ) -> Result<Json<Verification>, ApiError> {
     let Query(query) = query.map_err(|e| ApiError::Query(e.body_text()))?;
 
-    // An unknown proof type is reported as its own error rather than as `INVALID`. A validator that
-    // silently rejected every proof it was sent because of a misconfigured proof type would look
-    // exactly like a network with no provers on it.
+    // Its own error, not `INVALID`: a validator rejecting every proof because of a misconfigured
+    // proof type looks exactly like a network with no provers.
     let verifier = state.registry.verifier(query.proof_type).ok_or_else(|| {
         ApiError::UnsupportedProofType {
             proof_type: query.proof_type,
@@ -105,13 +100,12 @@ async fn verify_execution_proof(
         }
     })?;
 
-    // EIP-8025 requires a verifier to check `successful_validation` before treating a proof as a
-    // positive signal. A beacon node derives it as `true`, so anything else is a caller asking the
-    // wrong question, and answering `VALID` would endorse a proof that says the payload is invalid.
+    // EIP-8025 requires this check. A beacon node derives `true`, so anything else is the wrong
+    // question, and `VALID` would endorse a proof that calls the payload invalid.
     if !query.successful_validation {
         return Err(ApiError::NotAPositiveSignal);
     }
-    // The guests' sentinel for "could not decode the input", which no beacon node derives.
+    // The guests' sentinel for "could not decode the input".
     if query.schema_id == UNDECODABLE_SCHEMA_ID {
         return Err(ApiError::UndecodableSchemaId);
     }
@@ -125,7 +119,7 @@ async fn verify_execution_proof(
     };
     let root = hex::encode(public_input.new_payload_request_root);
 
-    // Verification is CPU-bound, so it does not belong on a runtime worker.
+    // CPU-bound, so not on a runtime worker.
     let _permit = state
         .concurrency
         .clone()
@@ -140,8 +134,7 @@ async fn verify_execution_proof(
     let committed = match verified {
         Ok(committed) => committed,
         Err(rejection) => {
-            // At `warn`, because the ordinary case is a network with no bad proofs on it: a steady
-            // stream of these is a misconfigured verifying key, not business as usual.
+            // At `warn`: a steady stream of these is a misconfigured verifying key.
             warn!(
                 proof_type = query.proof_type,
                 proof_bytes, %rejection, "Proof did not verify"
@@ -150,8 +143,7 @@ async fn verify_execution_proof(
         }
     };
 
-    // The proof verifies, but a proof of some other payload is not an answer to the question that
-    // was asked.
+    // It verifies, but a proof of another payload answers a different question.
     if !public_input.is_committed_by(&committed) {
         warn!(
             proof_type = query.proof_type,
@@ -223,8 +215,8 @@ mod tests {
     use serde_json::Value;
     use tower::ServiceExt;
 
-    /// A stand-in for a proof system, so the handler's own composition can be tested without a
-    /// proof for every case. The cryptography is covered in `tests/sp1_verifier.rs`.
+    /// Stands in for a proof system, so each case needs no proof. The cryptography is covered in
+    /// `tests/sp1_verifier.rs`.
     struct Stub(Result<Vec<u8>, &'static str>);
 
     impl ProofVerifier for Stub {
@@ -253,8 +245,7 @@ mod tests {
         }
     }
 
-    /// Proof type 1 commits the public input the requests below ask about, 2 commits something else,
-    /// and 3 refuses to verify at all.
+    /// 1 commits the public input asked about, 2 commits something else, 3 refuses to verify.
     fn router_with_stubs() -> Router {
         let registry = Registry::from_entries(vec![
             (
@@ -323,8 +314,7 @@ mod tests {
         assert_eq!(body["reason"], "the proof does not verify");
     }
 
-    /// An unknown proof type is its own error. Reported as `INVALID`, a misconfigured proof type
-    /// would be indistinguishable from a network with no provers on it.
+    /// As `INVALID`, a misconfigured proof type would look like a network with no provers.
     #[tokio::test]
     async fn reports_an_unsupported_proof_type_as_an_error() {
         let (status, body) = verify(&query_for(9)).await;
@@ -335,7 +325,7 @@ mod tests {
         assert_eq!(body["supported"], serde_json::json!([1, 2, 3]));
     }
 
-    /// Answering `VALID` here would endorse a proof that says the payload is invalid.
+    /// `VALID` here would endorse a proof that calls the payload invalid.
     #[tokio::test]
     async fn refuses_a_question_that_is_not_about_a_valid_payload() {
         let query =
@@ -379,7 +369,7 @@ mod tests {
         );
     }
 
-    /// A missing parameter used to come back as `text/plain`, unlike every other error here.
+    /// This used to come back as `text/plain`, unlike every other error.
     #[tokio::test]
     async fn reports_a_missing_parameter_as_json() {
         let query = query_for(1).replace("&chain_id=1", "");

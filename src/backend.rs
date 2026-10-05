@@ -1,9 +1,7 @@
 //! Proof systems this binary can verify against.
 //!
-//! A proof system contributes one thing: given a program's verifying key and some proof bytes,
-//! either reject them or hand back the bytes the guest committed to. Deciding whether those bytes
-//! are the public input the beacon node asked about is not the proof system's business, and lives
-//! in [`crate::public_input`].
+//! A proof system turns proof bytes into the bytes the guest committed to. Whether those are the
+//! right public input is decided in [`crate::public_input`].
 
 pub mod sp1;
 
@@ -17,15 +15,14 @@ pub trait ProofVerifier: Send + Sync + 'static {
     fn verify(&self, proof: &[u8]) -> Result<Vec<u8>, Rejection>;
 }
 
-/// Why a proof was not accepted. Either way the answer is `INVALID`, but the two are worth telling
-/// apart: bytes that never reached the cryptography are a different problem from a proof the
-/// cryptography turned down, and only the second says anything about a payload.
+/// Why a proof was not accepted. Both answer `INVALID`, but only `Unverified` says anything about a
+/// payload.
 #[derive(Debug, thiserror::Error)]
 pub enum Rejection {
-    /// The bytes are not a proof of the shape this proof system expects.
+    /// Not a proof of the shape this proof system expects.
     #[error("{0}")]
     Malformed(String),
-    /// The proof is well formed, and does not verify.
+    /// Well formed, and does not verify.
     #[error("{0}")]
     Unverified(String),
 }
@@ -65,10 +62,10 @@ impl ProofSystem {
         }
     }
 
-    /// Build a verifier bound to the program `program_vk` identifies.
+    /// Build a verifier for the program `program_vk` names.
     ///
-    /// Done once per proof type at startup, because a proof system may have expensive one-time
-    /// setup: SP1 builds its recursion verifier here rather than on the first request.
+    /// Called once per proof type at startup. SP1 builds its recursion verifier here, not per
+    /// request.
     pub fn verifier(self, program_vk: &[u8]) -> Result<Box<dyn ProofVerifier>, InvalidProgramVk> {
         match self {
             Self::Sp1 => Ok(Box::new(sp1::Sp1Verifier::new(program_vk)?)),

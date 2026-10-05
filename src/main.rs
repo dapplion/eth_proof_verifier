@@ -1,8 +1,6 @@
 //! A standalone verifier for EIP-8025 execution proofs.
 //!
-//! A beacon node points `--proof-engine-endpoint` at this process and asks it whether a gossiped
-//! execution proof verifies. It holds no key, speaks no gossip, keeps no chain state, and produces
-//! nothing.
+//! A beacon node points `--proof-engine-endpoint` here. No key, no gossip, no chain state.
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
@@ -32,8 +30,8 @@ async fn main() {
         )
         .init();
 
-    // Reported with `Display`, because that is where every one of these errors says which proof type
-    // or which path is at fault. `main` returning a `Result` would print `Debug` instead.
+    // `Display`, which is where these errors name the proof type or the path. A `Result` from
+    // `main` would print `Debug`.
     if let Err(error) = serve(config).await {
         error!("{error}");
         std::process::exit(1);

@@ -1,8 +1,7 @@
 //! SP1 proof verification.
 //!
-//! The verifying key, the proof encoding and the exit-code commitment are all conventions of the
-//! prover rather than of SP1 itself, so they have to match the provers in the wild. They follow
-//! `eth-act/ere`'s `ere-verifier-sp1`, which is what the `ere-guests` artifacts are produced by.
+//! The key format, the proof encoding and the exit-code commitment are prover conventions, not SP1
+//! itself. They follow `ere-verifier-sp1`, which produces the `ere-guests` artifacts.
 
 use std::{array::from_fn, borrow::Borrow, sync::LazyLock};
 
@@ -16,22 +15,19 @@ use crate::{
     registry::PROGRAM_VK_LEN,
 };
 
-/// Ceiling on what a length prefix inside a proof may ask the decoder to allocate.
+/// Ceiling on what a length prefix inside a proof can allocate.
 ///
-/// This is a denial-of-service guard, not a bound on the proof: bincode counts a cumulative
-/// in-memory claim, and a decoded value can need more memory than its wire form — an array of
-/// strings claims its padded size, for one. Setting it to `MAX_PROOF_SIZE` would therefore refuse
-/// some proofs the spec admits. `ere` uses the same 64 MiB for the same reason.
+/// A guard, not a size bound. bincode counts an in-memory claim, which can exceed the wire size, so
+/// `MAX_PROOF_SIZE` here would refuse proofs the spec admits. `ere` uses 64 MiB too.
 const MAX_DECODE_BYTES: usize = 64 * 1024 * 1024;
 
-/// Number of limbs the packed verifying key is manipulated in.
+/// Limbs the packed verifying key is held in.
 const PROGRAM_VK_LIMBS: usize = PROGRAM_VK_LEN / 8;
 
-/// Width of the slot each field element occupies in the packed verifying key.
+/// Bits per field element in the packed verifying key.
 const WORD_BITS: u32 = 31;
 
-/// The recursion verifier is shared by every SP1 proof type, and building it is the expensive part
-/// of SP1 verification. One instance serves all of them.
+/// Shared by every SP1 proof type. Building it is the expensive part.
 static RECURSION_VERIFIER: LazyLock<SP1CompressedVerifier> =
     LazyLock::new(SP1CompressedVerifier::new);
 
@@ -68,8 +64,7 @@ impl ProofVerifier for Sp1Verifier {
             ))
         })?;
 
-        // A guest that exited non-zero never reached its commitment, so whatever it left behind is
-        // not a validation result.
+        // A guest that exited non-zero never reached its commitment.
         let recursion_public_values = compressed.proof.public_values.as_slice();
         if recursion_public_values.len() != RECURSIVE_PROOF_NUM_PV_ELTS {
             return Err(Rejection::malformed(
@@ -95,8 +90,8 @@ impl ProofVerifier for Sp1Verifier {
 
 /// Decode the 32-byte verifying key SP1 provers publish.
 ///
-/// It is `HashableKey::bytes32`: the digest's field elements as base-`2^31` digits of a big endian
-/// integer, most significant element first.
+/// `HashableKey::bytes32`: the digest's field elements as base-`2^31` digits of a big endian
+/// integer, most significant first.
 fn decode_program_vk(bytes: &[u8]) -> Result<[SP1Field; DIGEST_SIZE], InvalidProgramVk> {
     const WORD_MASK: u64 = (1 << WORD_BITS) - 1;
 
@@ -120,15 +115,14 @@ fn decode_program_vk(bytes: &[u8]) -> Result<[SP1Field; DIGEST_SIZE], InvalidPro
         limbs[PROGRAM_VK_LIMBS - 1] >>= WORD_BITS;
     }
 
-    // Anything left over, or an element at or above the field order, is not a packed digest.
+    // Leftover bits, or an element at or above the field order, means this is not a digest.
     if limbs != [0; PROGRAM_VK_LIMBS] || words.iter().any(|word| *word >= SP1Field::ORDER_U32) {
         return Err(InvalidProgramVk::new("not a canonical packed digest"));
     }
     Ok(words.map(from_canonical_u32))
 }
 
-/// `from_canonical_u32` reaches the field element through its trait bound, which spares this module
-/// an import of the trait that declares it.
+/// Reaches `from_canonical_u32` through the bound, so this module need not import the trait.
 fn from_canonical_u32<F: PrimeField32>(word: u32) -> F {
     F::from_canonical_u32(word)
 }
@@ -143,19 +137,15 @@ mod tests {
         assert!(decode_program_vk(&[0; 33]).is_err());
     }
 
-    /// All ones does not fit in eight 31-bit digits, so bits are left over after unpacking.
+    /// All ones does not fit in eight 31-bit digits.
     #[test]
     fn rejects_a_program_vk_that_does_not_unpack() {
         assert!(decode_program_vk(&[0xff; 32]).is_err());
     }
 
-    /// A key may unpack cleanly and still name no digest, because an element at or above the field
-    /// order is not a field element.
-    ///
-    /// This case is why the order check cannot be dropped. `from_canonical_u32` reduces modulo the
-    /// order with only a `debug_assert`, and this crate runs in release, so without the check these
-    /// bytes would silently bind to the same program as an all-zero digest: the leading element is
-    /// exactly the order, which reduces to zero.
+    /// Why the field-order check cannot be dropped. `from_canonical_u32` reduces modulo the order
+    /// behind a `debug_assert`, so in release these bytes would bind to the same program as an
+    /// all-zero digest: the leading element is the order, which reduces to zero.
     #[test]
     fn rejects_a_program_vk_holding_a_non_field_element() {
         let at_the_order =

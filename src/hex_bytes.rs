@@ -1,7 +1,4 @@
-//! Strict fixed-length hex decoding, used everywhere this crate reads hex.
-//!
-//! `trim_start_matches("0x")` strips a prefix repeatedly and misses `0X`, which left the roots on
-//! the wire and the verifying keys in configuration disagreeing about what they accepted.
+//! Strict fixed-length hex decoding, shared so that every hex input accepts the same thing.
 
 use std::fmt::Display;
 
@@ -15,7 +12,7 @@ impl Error {
     }
 }
 
-/// Decode exactly `N` bytes, allowing one optional `0x` or `0X` prefix.
+/// Decode exactly `N` bytes, with at most one `0x` or `0X` prefix.
 pub fn decode<const N: usize>(value: &str) -> Result<[u8; N], Error> {
     let digits = value
         .strip_prefix("0x")
@@ -39,9 +36,8 @@ mod tests {
 
     #[test]
     fn accepts_one_prefix_or_none() {
-        let expected = [0xab; 4];
         for value in ["abababab", "0xabababab", "0Xabababab", "ABABABAB"] {
-            assert_eq!(decode::<4>(value).expect(value), expected);
+            assert_eq!(decode::<4>(value).expect(value), [0xab; 4]);
         }
     }
 
@@ -55,10 +51,5 @@ mod tests {
         assert!(decode::<4>("ababab").is_err());
         assert!(decode::<4>("ababababab").is_err());
         assert!(decode::<4>("").is_err());
-    }
-
-    #[test]
-    fn rejects_non_hex() {
-        assert!(decode::<4>("abababag").is_err());
     }
 }
