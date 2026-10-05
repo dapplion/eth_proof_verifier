@@ -68,10 +68,6 @@ pub enum LoadError {
     #[error("{path} gives proof type {proof_type} twice")]
     DuplicateProofType { path: String, proof_type: u8 },
     #[error(
-        "proof types {first} and {second} name the same program, which a proof type may not share"
-    )]
-    SharedProgram { first: u8, second: u8 },
-    #[error(
         "proof type {proof_type} has a verifying key that is not {PROGRAM_VK_LEN} bytes of hex: {source}"
     )]
     ProgramVkNotHex {
@@ -140,7 +136,6 @@ impl Registry {
         }
 
         let mut entries = BTreeMap::new();
-        let mut programs: BTreeMap<[u8; PROGRAM_VK_LEN], u8> = BTreeMap::new();
         for (proof_type, spec) in specs {
             // `ProofType` 0 is outside the assignable range, so an entry for it is a mistake worth
             // reporting rather than something to serve.
@@ -153,15 +148,6 @@ impl Registry {
             if program_vk == [0; PROGRAM_VK_LEN] {
                 return Err(LoadError::PlaceholderProgramVk { proof_type });
             }
-            // A proof type names one immutable program, and the spec forbids reusing an assignment.
-            // Serving one program under two numbers makes `proof_type` mean nothing.
-            if let Some(first) = programs.insert(program_vk, proof_type) {
-                return Err(LoadError::SharedProgram {
-                    first,
-                    second: proof_type,
-                });
-            }
-
             let verifier =
                 spec.proof_system
                     .verifier(&program_vk)
@@ -308,14 +294,6 @@ mod tests {
     fn rejects_a_duplicated_proof_type() {
         let twice = format!("{}{}", entry(3, FIXTURE_VK), entry(3, FIXTURE_VK));
         assert!(load_from(&twice).is_err());
-    }
-
-    /// One program under two numbers makes `proof_type` meaningless, and the spec forbids reusing
-    /// an assignment.
-    #[test]
-    fn rejects_one_program_under_two_proof_types() {
-        let shared = format!("{}{}", entry(3, FIXTURE_VK), entry(4, FIXTURE_VK));
-        assert!(load_from(&shared).is_err());
     }
 
     /// A half-filled config should not produce a running verifier that rejects everything.

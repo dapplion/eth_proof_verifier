@@ -131,11 +131,11 @@ async fn verify_execution_proof(
         .clone()
         .acquire_owned()
         .await
-        .map_err(|_| ApiError::ShuttingDown)?;
+        .map_err(|_| ApiError::Internal)?;
     let proof_bytes = proof.len();
     let verified = tokio::task::spawn_blocking(move || verifier.verify(&proof))
         .await
-        .map_err(|_| ApiError::VerificationPanicked)?;
+        .map_err(|_| ApiError::Internal)?;
 
     let committed = match verified {
         Ok(committed) => committed,
@@ -188,10 +188,8 @@ enum ApiError {
     NotAPositiveSignal,
     #[error("schema_id 0 is the sentinel for a guest that could not decode its input")]
     UndecodableSchemaId,
-    #[error("verification failed unexpectedly")]
-    VerificationPanicked,
-    #[error("shutting down")]
-    ShuttingDown,
+    #[error("verification did not complete")]
+    Internal,
 }
 
 impl IntoResponse for ApiError {
@@ -202,8 +200,7 @@ impl IntoResponse for ApiError {
             | Self::Query(_)
             | Self::NotAPositiveSignal
             | Self::UndecodableSchemaId => StatusCode::BAD_REQUEST,
-            Self::VerificationPanicked => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::ShuttingDown => StatusCode::SERVICE_UNAVAILABLE,
+            Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
         let mut body = serde_json::json!({ "error": self.to_string() });

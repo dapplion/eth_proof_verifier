@@ -49,44 +49,6 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind(config.listen_address).await?;
     info!(address = %listener.local_addr()?, "Verifying execution proofs");
 
-    axum::serve(listener, api::router(Arc::new(registry)))
-        .with_graceful_shutdown(shutdown())
-        .await?;
+    axum::serve(listener, api::router(Arc::new(registry))).await?;
     Ok(())
-}
-
-/// Resolves when the process is asked to stop.
-async fn shutdown() {
-    let interrupt = async {
-        match tokio::signal::ctrl_c().await {
-            Ok(()) => (),
-            Err(error) => {
-                // The handler is not installed, so this future must never resolve: resolving would
-                // shut the server down the moment it started, and exit successfully doing it.
-                error!(%error, "Cannot listen for an interrupt");
-                std::future::pending().await
-            }
-        }
-    };
-
-    #[cfg(unix)]
-    {
-        let mut terminate =
-            match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-                Ok(terminate) => terminate,
-                Err(error) => {
-                    error!(%error, "Cannot listen for a termination signal");
-                    interrupt.await;
-                    return info!("Shutting down");
-                }
-            };
-        tokio::select! {
-            _ = interrupt => {}
-            _ = terminate.recv() => {}
-        }
-    }
-    #[cfg(not(unix))]
-    interrupt.await;
-
-    info!("Shutting down");
 }
