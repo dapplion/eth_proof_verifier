@@ -1,104 +1,48 @@
 # eth_proof_verifier
 
-A standalone verifier for [EIP-8025](https://eips.ethereum.org/EIPS/eip-8025) execution proofs. It is the sidecar a validator runs in order to check an execution payload by verifying a proof of its execution, instead of re-executing it.
+Verify [EIP-8025](https://eips.ethereum.org/EIPS/eip-8025) execution proofs. One binary, no setup.
 
-One binary, one job, no setup. Start it, point your beacon node at it, done.
+Point a beacon node here and it checks execution payloads by verifying a proof instead of re-executing them. **~30 ms and ~7 MB per proof, constant in block gas.** No proving, no keys, no gossip, no chain state, no execution client.
 
-## Why
+## Run
 
-EIP-8025 adds execution proofs to the consensus layer as an optional second oracle for execution validity. A beacon node that can verify such a proof does not have to re-execute the payload to believe it, and the cost of checking a proof is roughly constant in the size of the block: a 60M-gas block and a 600M-gas block verify in about the same time. That lowers the hardware floor for attesting.
+```sh
+cargo install --git https://github.com/dapplion/eth_proof_verifier
+eth_proof_verifier
+```
 
-The proofs themselves are produced by *provers* — opt-in validators running a full execution client and a proving stack. Proving is expensive and specialised. **Verifying is not**, and verifying is all a validator needs. This repository implements only that side.
+Or take a binary from [releases](https://github.com/dapplion/eth_proof_verifier/releases).
 
-## Scope
+Then on Lighthouse: `--proof-engine-endpoint http://127.0.0.1:8025`.
 
-It verifies proofs. That is the whole of it.
-
-- No proof generation, and no proving stack.
-- No validator key, no signing, no gossip, no peers, no chain state, no database.
-- No execution client, and no execution witness.
-
-The consensus specs call this component a *proof node*. It has no peers and holds no chain, so that name is not used here.
-
-## How a proof is verified
-
-A beacon node hands over a `proof_type`, the four public-input fields it derived from its own state, and the proof bytes. The verifier then:
-
-1. Resolves `proof_type` to a registry entry: proof system, guest program, versions, and that program's verifying key.
-2. Decodes the proof bytes with that proof system's codec, rejecting trailing bytes.
-3. Verifies the proof against the verifying key.
-4. Extracts the public values the guest committed to, and for SP1 requires the committed guest exit code to be `0`.
-5. Requires those committed bytes to equal the canonical encoding of the public input the beacon node supplied.
-
-Step 5 is the binding that matters. A proof is only an answer to the question the beacon node asked if it commits to exactly the payload, chain and schema the beacon node named.
-
-## Batteries included
-
-Verifying needs the proof system's verifier and the guest program's verifying key, and **a verifying key is 32 bytes** for SP1 and ZisK. The multi-megabyte guest ELF is a proving input and plays no part in verification.
-
-So there is nothing to install and nothing to fetch. The verifying keys are compiled in, the verifiers are ordinary Rust dependencies pinned to published versions, and the binary verifies out of the box:
-
-- no Docker,
-- no zkVM SDK installation,
-- no artifact or ceremony download,
-- no proving-key directory,
-- no configuration required.
-
-Adding a proof type is pasting 32 bytes of hex into a config file, not provisioning a machine.
+| flag | default |
+| --- | --- |
+| `--listen-address` | `127.0.0.1:8025` |
+| `--proof-types FILE` | the table below |
 
 ## API
 
-### `POST /v1/execution_proof_verifications`
-
-The public input is passed as query parameters and the proof as the request body, so no SSZ is involved on either side.
-
-```
-POST /v1/execution_proof_verifications
-    ?proof_type=1
-    &new_payload_request_root=0x8f1c...
-    &successful_validation=true
-    &chain_id=1
-    &schema_id=5377
-Content-Type: application/octet-stream
-
-<proof bytes>
-```
+**`POST /v1/execution_proof_verifications`** — query: `proof_type`, `new_payload_request_root`, `successful_validation`, `chain_id`, `schema_id`. Body: the proof bytes.
 
 ```json
-{ "status": "VALID" }
-{ "status": "INVALID", "reason": "committed public input does not match" }
+{"status": "VALID"}
+{"status": "INVALID", "reason": "proof commits to a different public input"}
 ```
 
-An unknown `proof_type` is **not** reported as `INVALID`. It is a distinct error, because a validator that silently rejects every proof it is sent on account of a misconfigured proof type is the worst outcome this component has:
+An unknown `proof_type` is `400`, never `INVALID` — a validator silently rejecting every proof looks exactly like a network with no provers on it.
 
-```json
-{ "error": "unsupported proof type", "proof_type": 7, "supported": [1, 2, 3] }
-```
-
-### `GET /v1/proof_types`
-
-The proof types this verifier can check, which a beacon node needs in order to advertise the ENR `eproof` field and to answer the `ExecutionProofStatus` handshake.
-
-## Usage
-
-```
-eth_proof_verifier [--listen-address 127.0.0.1:8025] [--proof-types FILE]
-```
-
-Then point your beacon node at it. On Lighthouse that is `--proof-engine-endpoint http://127.0.0.1:8025`.
+**`GET /v1/proof_types`** — what this binary can verify, for the ENR `eproof` field and the `ExecutionProofStatus` handshake.
 
 ## Proof types
 
-A `ProofType` names an immutable triple of proof system, guest program and version. It is not a proof system on its own: a proof is checked against one specific compiled program, so changing the guest or either version takes a new proof type, never a redefinition of an existing one.
+A proof type is an immutable `(proof system, guest program, version)` triple. Change any part and it takes a new number.
 
-EIP-8025 fixes the supported set at `{1, 2, 3}` but assigns the numbers no meanings, and expects further values to be socialised out of band. These assignments are therefore this project's, and `--proof-types` overrides or extends them by number:
-
-| `proof_type` | Proof system | Guest |
+| `proof_type` | system | guest |
 | --- | --- | --- |
 | 1 | SP1 6.4.0 | reth 0.1.0-rc.3 |
 | 2 | SP1 6.4.0 | ethrex 27.0.0 |
 
-Guest programs and their verifying keys come from [`eth-act/ere-guests`](https://github.com/eth-act/ere-guests) v0.17.1 and the execution clients' own releases. A verifying key is only meaningful for the proof-system version its guest was compiled and proved with, which is why every entry carries that version and why they all agree with the pinned `sp1-verifier`.
+EIP-8025 fixes the set at `{1, 2, 3}` but assigns no meanings, so these are ours. Override or extend by number:
 
 ```toml
 [[proof_types]]
@@ -107,43 +51,39 @@ proof_system = "sp1"
 proof_system_version = "6.4.0"
 guest = "zesu"
 guest_version = "tests-glamsterdam-devnet@v8.1.4"
-program_vk = "00a03cbf...dd"
+program_vk = "00a03cbf…dd"
 ```
 
-## Proof systems
+## Add your proving system
 
-| Proof system | Status |
+**zk teams: PRs very welcome.** A backend is small — implement `ProofVerifier::verify`, returning the bytes your guest committed to, add a `ProofSystem` variant, and add a row to `default_proof_types.toml`. Everything else is shared. See `src/backend/sp1.rs`, which is about 80 lines of real work.
+
+Two asks, both so operators get a binary that just works:
+
+- **Your verifier on crates.io, at a pinned version.** Not a git branch.
+- **A verifying key per guest program**, published and small enough to compile in. SP1's is 32 bytes.
+- **A real proof as a test fixture**, so CI proves the backend verifies rather than asserting it.
+
+| system | |
 | --- | --- |
-| SP1 | supported, via `sp1-verifier`, compressed proofs |
-| ZisK | blocked |
-| OpenVM | blocked |
+| SP1 | ✅ |
+| ZisK | blocked: of the aggregation keys only `1.3.1-alpha` is published, and no guest key exists for it |
+| OpenVM | blocked: guests target `v2.1.0-preview`, crates.io has `2.0.x`, and the matching verifier lives on fork branches |
 
-Both of the others are blocked on published artifacts rather than unwanted, and each has a backend slot waiting.
+Neither is unwanted — both have a slot waiting.
 
-**ZisK** verification needs three things to agree: the verifier crate version, the guest program's verifying key, and the proof system's aggregation verifying key. `zisk-verifier` is on crates.io for 1.1.0-alpha through 1.3.1-alpha, and guest keys exist for v1.1.0-alpha and v1.2.0-alpha, but of the aggregation keys **only 1.3.1-alpha is published** — and no guest key exists for it. No obtainable combination lines up.
+## One deviation from the spec
 
-**OpenVM** guest programs are built against `v2.1.0-preview`. crates.io carries only 2.0.x, and the one verifier matching those guests lives on unmerged branches of personal forks of both `openvm` and `stark-backend`. There is nothing to pin.
+`proof-engine.md` says to use `hash_tree_root(public_input)` as the proof-system public input. No shipped guest commits a root; every one commits the 43-byte SSZ of its `StatelessValidationResult`, so that is what a proof is bound to here. The field list is identical and the encoding is fixed-length and injective, so the binding is exactly as tight — and nothing in this crate has to merkleize anything.
 
-## Where this deviates from the specification
+## Tests
 
-`proof-engine.md` says to use `hash_tree_root(execution_proof.public_input)` as the proof-system public input. This verifier instead binds to the canonical SSZ **serialisation** of those fields, because no guest program commits to a root:
+```sh
+cargo test --release
+```
 
-- Every shipped guest commits 43 plain SSZ bytes — `new_payload_request_root` (32), `successful_validation` (1), `chain_id` (8, little endian), `schema_id` (2, little endian) — which is the guest's `StatelessValidationResult`.
-- The field list is identical to the spec's `PublicInput`, and the encoding is fixed-length and injective, so binding to the bytes binds exactly as tightly as binding to their root.
-- The two roots could not agree in any case. The spec's `PublicInput` is an EIP-7688 `ProgressiveContainer`, and the guest's result is a plain fixed container, so they merkleize differently.
+`tests/sp1_verifier.rs` runs a real 1.27 MB SP1 proof. It must verify, and must be rejected under a different program, when corrupted, with trailing bytes, with a declared length beyond the input, and when its **public values are edited** — that last one is what makes the public-input comparison a binding and not theatre.
 
-A happy consequence: this verifier merkleizes nothing, and therefore carries no SSZ library and no progressive-container support.
+## License
 
-A zero `schema_id` is the guests' sentinel for "could not decode the input or produce a result", so such a proof can never match a real public input.
-
-## Status
-
-Early, but working. SP1 verification is implemented and tested against a real proof, and the API above may still move.
-
-`tests/sp1_verifier.rs` runs the SP1 backend against a genuine 1.27 MB SP1 compressed proof. It checks that the proof verifies and returns exactly the bytes its guest committed to, and that each of a different program, a corrupted proof, trailing bytes, a declared length beyond the input, and **edited public values** is rejected. That last one is the property the public-input binding rests on: if the bytes a proof carries were not authenticated by the proof, a valid proof of one payload could be relabelled as a proof of another.
-
-On one core of a 2026 x86 server, verifying that proof takes about **30 ms** in roughly **7 MB** of resident memory. The binary is about 5.5 MB and needs nothing beside it.
-
-## Credits
-
-The guest programs, their verifying keys, and the proof-encoding details this verifier has to agree with are the work of [eth-act](https://github.com/eth-act) on [`ere`](https://github.com/eth-act/ere) and [`ere-guests`](https://github.com/eth-act/ere-guests), and of the SP1 and ZisK teams on the verifiers themselves.
+Apache-2.0 OR MIT. Guest programs, verifying keys and the test fixture come from [eth-act/ere-guests](https://github.com/eth-act/ere-guests) and [ere](https://github.com/eth-act/ere).
