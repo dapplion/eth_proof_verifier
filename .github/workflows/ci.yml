@@ -36,7 +36,7 @@ jobs:
 
       # `proofman-starks-lib-c` builds rapidsnark from C++ sources in its build script. Needing this
       # is why the feature is off by default.
-      - run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev
+      - run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev libsodium-dev nasm
 
       - run: cargo clippy --all-targets --release --locked --features zisk -- -D warnings
       - run: cargo test --release --locked --features zisk
