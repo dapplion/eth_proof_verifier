@@ -5,6 +5,9 @@
 # at {1, 2, 3} but assigns no meanings, so these assignments are ours, and a `--proof-types` file
 # overrides or extends them by number.
 #
+# No ZisK entry: that backend verifies, but its aggregation key moves with each ZisK patch release
+# and the key for the version the published ZisK guests were built with is not available.
+#
 # Keys come from eth-act/ere-guests v0.17.1. `proof_system_version` is the version the guest was
 # proved with, not the verifier's own: one pinned verifier reads several.
 

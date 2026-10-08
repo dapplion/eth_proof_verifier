@@ -1,6 +1,6 @@
 # eth_proof_verifier
 
-Verify [EIP-8025](https://eips.ethereum.org/EIPS/eip-8025) execution proofs. One binary, no setup, ~30 ms per proof.
+Verify [EIP-8025](https://eips.ethereum.org/EIPS/eip-8025) execution proofs. One binary, no setup, 12-30 ms per proof.
 
 ```sh
 cargo install --locked --git https://github.com/dapplion/eth_proof_verifier   # or a release binary
@@ -14,6 +14,13 @@ Lighthouse: `--proof-engine-endpoint http://127.0.0.1:8025`.
 - `POST /v1/execution_proof_verifications` — query `proof_type`, `new_payload_request_root`, `successful_validation`, `chain_id`, `schema_id`; body the proof. `{"status":"VALID"}`, or `INVALID` with a reason. An unknown `proof_type` is `400`, never `INVALID`.
 - `GET /v1/proof_types` — for the ENR `eproof` field and `ExecutionProofStatus`.
 
+## Proof systems
+
+SP1 and ZisK, each verified in process from a pinned crates.io verifier. No proof type names a ZisK
+guest yet: the aggregation key changes between ZisK patch releases, and the one for 1.2.0-alpha, the
+version `ere-guests` built its ZisK guests with, is not published. `--proof-types` takes an entry the
+day a guest and a published key line up.
+
 ## Proof types
 
 Immutable `(system, guest, version)` triples. `--proof-types FILE` adds more.
@@ -25,6 +32,6 @@ Immutable `(system, guest, version)` triples. `--proof-types FILE` adds more.
 
 ## Adding a proving system
 
-PRs welcome: implement `ProofVerifier::verify`, add a row. See `src/backend/sp1.rs`, ~130 lines. Bring a crates.io verifier at a pinned version, a published verifying key per guest, and a real proof as a fixture. ZisK and OpenVM wait on exactly that.
+PRs welcome: implement `ProofVerifier::verify`, add a row. See `src/backend/zisk.rs`, ~140 lines. Bring a crates.io verifier at a pinned version, a published verifying key per guest, and a real proof as a fixture. OpenVM waits on the first: its guests are built for 2.1.0-preview and crates.io carries 2.0.x.
 
 Apache-2.0 OR MIT. Guests, keys and fixture from [ere](https://github.com/eth-act/ere).

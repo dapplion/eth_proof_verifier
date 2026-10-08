@@ -9,13 +9,9 @@ use sp1_recursion_executor::{RECURSIVE_PROOF_NUM_PV_ELTS, RecursionPublicValues}
 use sp1_verifier::{ProofFromNetwork, compressed::SP1CompressedVerifier};
 
 use crate::{
-    backend::{InvalidProgramVk, ProofVerifier, Rejection},
+    backend::{InvalidProgramVk, MAX_DECODE_BYTES, ProofVerifier, Rejection},
     registry::PROGRAM_VK_LEN,
 };
-
-/// A guard, not a size bound: bincode counts an in-memory claim, which can exceed the wire size, so
-/// `MAX_PROOF_SIZE` here would refuse proofs the spec admits. `ere` uses 64 MiB too.
-const MAX_DECODE_BYTES: usize = 64 * 1024 * 1024;
 
 const PROGRAM_VK_LIMBS: usize = PROGRAM_VK_LEN / 8;
 
