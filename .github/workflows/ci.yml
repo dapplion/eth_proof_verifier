@@ -34,9 +34,13 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
 
-      # `proofman-starks-lib-c` builds rapidsnark from C++ sources in its build script. Needing this
-      # is why the feature is off by default.
-      - run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev libsodium-dev nasm
+      # `proofman-starks-lib-c` builds rapidsnark, starkpil, blst and an MPI binding from C++ sources
+      # in its build script. Needing all of this to *verify* is why the feature is off by default.
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libclang-dev pkg-config libssl-dev \
+            libgmp-dev nasm libsodium-dev nlohmann-json3-dev libopenmpi-dev openmpi-bin \
+            protobuf-compiler uuid-dev
 
       - run: cargo clippy --all-targets --release --locked --features zisk -- -D warnings
       - run: cargo test --release --locked --features zisk

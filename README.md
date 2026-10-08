@@ -17,8 +17,8 @@ Lighthouse: `--proof-engine-endpoint http://127.0.0.1:8025`.
 ## Proof systems
 
 SP1 by default. ZisK under `--features zisk`, which is off because its verifier builds rapidsnark
-from C++ sources and so wants a C++ toolchain, `nlohmann/json.hpp`, libsodium and nasm; a default
-build installs with none of that.
+from C++ sources and so wants a C++ toolchain, nasm, libsodium, nlohmann/json, GMP and MPI; a
+default build installs with none of that. `.github/workflows/ci.yml` has the package list.
 
 No proof type names a ZisK guest either way: the aggregation key changes between ZisK patch releases,
 and the one for 1.2.0-alpha, the version `ere-guests` built its ZisK guests with, is not published.
