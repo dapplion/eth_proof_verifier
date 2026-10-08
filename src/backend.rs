@@ -2,6 +2,7 @@
 //! right public input is decided in [`crate::public_input`].
 
 pub mod sp1;
+#[cfg(feature = "zisk")]
 pub mod zisk;
 
 use std::fmt::Display;
@@ -53,6 +54,7 @@ impl InvalidProgramVk {
 #[serde(rename_all = "lowercase")]
 pub enum ProofSystem {
     Sp1,
+    #[cfg(feature = "zisk")]
     Zisk,
 }
 
@@ -60,6 +62,7 @@ impl ProofSystem {
     pub fn name(self) -> &'static str {
         match self {
             Self::Sp1 => "sp1",
+            #[cfg(feature = "zisk")]
             Self::Zisk => "zisk",
         }
     }
@@ -69,6 +72,7 @@ impl ProofSystem {
     pub fn verifier(self, program_vk: &[u8]) -> Result<Box<dyn ProofVerifier>, InvalidProgramVk> {
         match self {
             Self::Sp1 => Ok(Box::new(sp1::Sp1Verifier::new(program_vk)?)),
+            #[cfg(feature = "zisk")]
             Self::Zisk => Ok(Box::new(zisk::ZiskVerifier::new(program_vk)?)),
         }
     }

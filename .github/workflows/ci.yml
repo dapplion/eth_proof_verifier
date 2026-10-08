@@ -24,3 +24,19 @@ jobs:
       # than milliseconds.
       - run: cargo clippy --all-targets --release --locked -- -D warnings
       - run: cargo test --release --locked
+
+  zisk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+
+      # `proofman-starks-lib-c` builds rapidsnark from C++ sources in its build script. Needing this
+      # is why the feature is off by default.
+      - run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev
+
+      - run: cargo clippy --all-targets --release --locked --features zisk -- -D warnings
+      - run: cargo test --release --locked --features zisk
