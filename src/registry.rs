@@ -42,6 +42,83 @@ struct ProofTypesFile {
     proof_types: Vec<ProofTypeSpec>,
 }
 
+/// Lighthouse's `--proof-engine` file: `beacon_node/proof_engine/src/config.rs` on
+/// `eth-act/lighthouse`. The zkVM is not written down, it is named by the proof type.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProofEngineFile {
+    execution_proofs: Vec<ExecutionProofEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExecutionProofEntry {
+    proof_type: u8,
+    program_vk: String,
+}
+
+struct AssignedProofType {
+    proof_type: u8,
+    guest: &'static str,
+    guest_version: &'static str,
+    /// `None` for a zkVM with no backend here.
+    proof_system: Option<ProofSystem>,
+    proof_system_version: &'static str,
+}
+
+/// `ProofType` on `eth-act/lighthouse`, with the guest versions its `config.rs` records.
+const ASSIGNED_PROOF_TYPES: [AssignedProofType; 7] = [
+    AssignedProofType {
+        proof_type: 1,
+        guest: "ethrex",
+        guest_version: "26.0.0",
+        proof_system: None,
+        proof_system_version: "",
+    },
+    AssignedProofType {
+        proof_type: 2,
+        guest: "ethrex",
+        guest_version: "26.0.0",
+        proof_system: Some(ProofSystem::Sp1),
+        proof_system_version: "6.4.0",
+    },
+    AssignedProofType {
+        proof_type: 3,
+        guest: "ethrex",
+        guest_version: "26.0.0",
+        proof_system: Some(ProofSystem::Zisk),
+        proof_system_version: "1.2.0-alpha",
+    },
+    AssignedProofType {
+        proof_type: 4,
+        guest: "reth",
+        guest_version: "0.1.0-rc.3",
+        proof_system: None,
+        proof_system_version: "",
+    },
+    AssignedProofType {
+        proof_type: 5,
+        guest: "reth",
+        guest_version: "0.1.0-rc.3",
+        proof_system: Some(ProofSystem::Sp1),
+        proof_system_version: "6.4.0",
+    },
+    AssignedProofType {
+        proof_type: 6,
+        guest: "reth",
+        guest_version: "0.1.0-rc.3",
+        proof_system: Some(ProofSystem::Zisk),
+        proof_system_version: "1.2.0-alpha",
+    },
+    AssignedProofType {
+        proof_type: 7,
+        guest: "zesu",
+        guest_version: "8.1.4",
+        proof_system: Some(ProofSystem::Zisk),
+        proof_system_version: "1.2.0-alpha",
+    },
+];
+
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
     #[error("cannot read {path}: {source}")]
@@ -54,6 +131,13 @@ pub enum LoadError {
         path: String,
         source: toml::de::Error,
     },
+    #[error("cannot parse {path}: {source}")]
+    ParseJson {
+        path: String,
+        source: serde_json::Error,
+    },
+    #[error("{path} names proof type {proof_type}, which EIP-8025 does not assign")]
+    UnassignedProofType { path: String, proof_type: u8 },
     #[error("{path} gives proof type {proof_type} twice")]
     DuplicateProofType { path: String, proof_type: u8 },
     #[error(
@@ -122,6 +206,61 @@ impl Registry {
             }
         }
 
+        Self::build(specs)
+    }
+
+    /// Load a Lighthouse `--proof-engine` file, which replaces the compiled-in proof types: it
+    /// numbers them differently, so the two cannot be merged.
+    pub fn load_proof_engine(path: &Path) -> Result<Self, LoadError> {
+        let display = path.display().to_string();
+        let contents = std::fs::read_to_string(path).map_err(|source| LoadError::Read {
+            path: display.clone(),
+            source,
+        })?;
+        let file: ProofEngineFile =
+            serde_json::from_str(&contents).map_err(|source| LoadError::ParseJson {
+                path: display.clone(),
+                source,
+            })?;
+
+        let mut specs = BTreeMap::new();
+        for entry in file.execution_proofs {
+            let proof_type = entry.proof_type;
+            let Some(assigned) = ASSIGNED_PROOF_TYPES
+                .iter()
+                .find(|assigned| assigned.proof_type == proof_type)
+            else {
+                return Err(LoadError::UnassignedProofType {
+                    path: display,
+                    proof_type,
+                });
+            };
+            let Some(proof_system) = assigned.proof_system else {
+                warn!(
+                    "Proof type {proof_type} ({}) is not served: no OpenVM backend",
+                    assigned.guest
+                );
+                continue;
+            };
+            let spec = ProofTypeSpec {
+                proof_type,
+                proof_system,
+                proof_system_version: assigned.proof_system_version.to_owned(),
+                guest: assigned.guest.to_owned(),
+                guest_version: assigned.guest_version.to_owned(),
+                program_vk: entry.program_vk,
+            };
+            if specs.insert(proof_type, spec).is_some() {
+                return Err(LoadError::DuplicateProofType {
+                    path: display,
+                    proof_type,
+                });
+            }
+        }
+        Self::build(specs)
+    }
+
+    fn build(specs: BTreeMap<u8, ProofTypeSpec>) -> Result<Self, LoadError> {
         let mut entries = BTreeMap::new();
         for (proof_type, spec) in specs {
             if proof_type == 0 {
@@ -230,6 +369,39 @@ mod tests {
              guest_version = \"1\"\n\
              program_vk = \"{program_vk}\"\n"
         )
+    }
+
+    const RETH_SP1_VK: &str = "00a03cbfa95559cfee3b45ef925f3f7a631181e35e774e92b040277d893511dd";
+
+    fn load_proof_engine_from(contents: &str) -> Result<Registry, LoadError> {
+        let path = std::env::temp_dir().join(format!(
+            "eth_proof_verifier-{}-{:?}.json",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::write(&path, contents).expect("config is writable");
+        let loaded = Registry::load_proof_engine(&path);
+        let _ = std::fs::remove_file(&path);
+        loaded
+    }
+
+    /// Lighthouse numbers reth SP1 as 5, and the defaults here as 1; the file wins outright.
+    #[test]
+    fn a_proof_engine_file_replaces_the_defaults_and_skips_openvm() {
+        let json = format!(
+            r#"{{"execution_proofs":[{{"proof_type":4,"program_vk":"0x0025e8d04400"}},{{"proof_type":5,"program_vk":"0x{RETH_SP1_VK}"}}]}}"#
+        );
+        let registry = load_proof_engine_from(&json).expect("loads");
+        assert_eq!(registry.supported(), vec![5]);
+        assert_eq!(registry.specs()[0].guest, "reth");
+    }
+
+    #[test]
+    fn a_proof_engine_file_rejects_an_unassigned_proof_type() {
+        let json = format!(
+            r#"{{"execution_proofs":[{{"proof_type":8,"program_vk":"0x{RETH_SP1_VK}"}}]}}"#
+        );
+        assert!(load_proof_engine_from(&json).is_err());
     }
 
     /// Without this, a binary with no configuration is dead on arrival.

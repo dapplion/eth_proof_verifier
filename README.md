@@ -24,7 +24,7 @@ and the one for 1.2.0-alpha, the version `ere-guests` built its ZisK guests with
 
 ## Proof types
 
-Immutable `(system, guest, version)` triples. `--proof-types FILE` adds more.
+Immutable `(system, guest, version)` triples. `--proof-types FILE` adds more. `--proof-engine FILE` serves Lighthouse's `--proof-engine` JSON instead, under its numbering; its OpenVM entries are not served.
 
 | # | guest | built with |
 | --- | --- | --- |

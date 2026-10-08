@@ -16,6 +16,9 @@ struct Config {
     /// Proof types to add to, or replace, the compiled-in ones. Matched by proof type number.
     #[arg(long, value_name = "FILE")]
     proof_types: Option<PathBuf>,
+    /// Lighthouse's `--proof-engine` file, served instead of the compiled-in proof types.
+    #[arg(long, value_name = "FILE", conflicts_with = "proof_types")]
+    proof_engine: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -36,7 +39,10 @@ async fn main() {
 }
 
 async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
-    let registry = Registry::load(config.proof_types.as_deref())?;
+    let registry = match &config.proof_engine {
+        Some(path) => Registry::load_proof_engine(path)?,
+        None => Registry::load(config.proof_types.as_deref())?,
+    };
     for spec in registry.specs() {
         info!("Serving proof type {spec}");
     }
