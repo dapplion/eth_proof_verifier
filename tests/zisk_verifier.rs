@@ -1,4 +1,3 @@
-#![cfg(feature = "zisk")]
 //! The fixture is a genuine ZisK VadcopFinal proof, its program's verifying key, and the public
 //! values its guest committed to, from `eth-act/ere`'s `ere-verifier-zisk` test fixtures
 //! (Apache-2.0 OR MIT, as here). Its guest is one of ere's own test programs rather than a
