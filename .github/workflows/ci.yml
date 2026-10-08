@@ -20,7 +20,7 @@ jobs:
 
       - run: cargo fmt --all --check
 
-      # Release, so the artifacts are the ones `cargo test --release` goes on to reuse. Proof
-      # verification is field arithmetic, and unoptimised it takes minutes rather than milliseconds.
+      # Release: proof verification is field arithmetic, and unoptimised it takes minutes rather
+      # than milliseconds.
       - run: cargo clippy --all-targets --release --locked -- -D warnings
       - run: cargo test --release --locked

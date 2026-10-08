@@ -1,5 +1,3 @@
-//! SP1 proof verification.
-//!
 //! The key format, the proof encoding and the exit-code commitment are prover conventions, not SP1
 //! itself. They follow `ere-verifier-sp1`, which produces the `ere-guests` artifacts.
 
@@ -15,23 +13,19 @@ use crate::{
     registry::PROGRAM_VK_LEN,
 };
 
-/// Ceiling on what a length prefix inside a proof can allocate.
-///
-/// A guard, not a size bound. bincode counts an in-memory claim, which can exceed the wire size, so
+/// A guard, not a size bound: bincode counts an in-memory claim, which can exceed the wire size, so
 /// `MAX_PROOF_SIZE` here would refuse proofs the spec admits. `ere` uses 64 MiB too.
 const MAX_DECODE_BYTES: usize = 64 * 1024 * 1024;
 
-/// Limbs the packed verifying key is held in.
 const PROGRAM_VK_LIMBS: usize = PROGRAM_VK_LEN / 8;
 
 /// Bits per field element in the packed verifying key.
 const WORD_BITS: u32 = 31;
 
-/// Shared by every SP1 proof type. Building it is the expensive part.
+/// Shared by every SP1 proof type: building it is the expensive part.
 static RECURSION_VERIFIER: LazyLock<SP1CompressedVerifier> =
     LazyLock::new(SP1CompressedVerifier::new);
 
-/// Verifier bound to one compiled guest program.
 pub struct Sp1Verifier {
     /// Poseidon2 digest of the program's SP1 verifying key.
     program_vk: [SP1Field; DIGEST_SIZE],
@@ -88,8 +82,6 @@ impl ProofVerifier for Sp1Verifier {
     }
 }
 
-/// Decode the 32-byte verifying key SP1 provers publish.
-///
 /// `HashableKey::bytes32`: the digest's field elements as base-`2^31` digits of a big endian
 /// integer, most significant first.
 fn decode_program_vk(bytes: &[u8]) -> Result<[SP1Field; DIGEST_SIZE], InvalidProgramVk> {
@@ -122,7 +114,8 @@ fn decode_program_vk(bytes: &[u8]) -> Result<[SP1Field; DIGEST_SIZE], InvalidPro
     Ok(words.map(from_canonical_u32))
 }
 
-/// Reaches `from_canonical_u32` through the bound, so this module need not import the trait.
+/// Reaches `from_canonical_u32` through the bound: it is on a supertrait, in a crate this one does
+/// not depend on directly.
 fn from_canonical_u32<F: PrimeField32>(word: u32) -> F {
     F::from_canonical_u32(word)
 }
@@ -137,13 +130,18 @@ mod tests {
         assert!(decode_program_vk(&[0; 33]).is_err());
     }
 
-    /// All ones does not fit in eight 31-bit digits.
+    /// 31 bits times 8 elements leaves the top byte unused, so a key that sets it is packed to a
+    /// different convention and names no program here. The elements below it are all valid, so only
+    /// the leftover-bits half of the canonicity check refuses this.
     #[test]
-    fn rejects_a_program_vk_that_does_not_unpack() {
-        assert!(decode_program_vk(&[0xff; 32]).is_err());
+    fn rejects_a_program_vk_with_bits_outside_its_elements() {
+        let mut top_byte_set = [0u8; PROGRAM_VK_LEN];
+        top_byte_set[0] = 0x01;
+
+        assert!(decode_program_vk(&top_byte_set).is_err());
     }
 
-    /// Why the field-order check cannot be dropped. `from_canonical_u32` reduces modulo the order
+    /// Why the field-order half cannot be dropped. `from_canonical_u32` reduces modulo the order
     /// behind a `debug_assert`, so in release these bytes would bind to the same program as an
     /// all-zero digest: the leading element is the order, which reduces to zero.
     #[test]

@@ -7,7 +7,7 @@ cargo install --locked --git https://github.com/dapplion/eth_proof_verifier   # 
 eth_proof_verifier --listen-address 127.0.0.1:8025
 ```
 
-Lighthouse: `--proof-engine-endpoint http://127.0.0.1:8025`, once its client sends the four public-input fields the current spec defines.
+Lighthouse: `--proof-engine-endpoint http://127.0.0.1:8025`.
 
 ## API
 

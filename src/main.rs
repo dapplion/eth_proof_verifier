@@ -1,5 +1,3 @@
-//! A standalone verifier for EIP-8025 execution proofs.
-//!
 //! A beacon node points `--proof-engine-endpoint` here. No key, no gossip, no chain state.
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
@@ -30,8 +28,7 @@ async fn main() {
         )
         .init();
 
-    // `Display`, which is where these errors name the proof type or the path. A `Result` from
-    // `main` would print `Debug`.
+    // `Display`, not the `Debug` a `Result` from `main` prints: that drops the proof type and path.
     if let Err(error) = serve(config).await {
         error!("{error}");
         std::process::exit(1);

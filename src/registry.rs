@@ -1,7 +1,5 @@
-//! The proof types this binary can verify, and the verifier for each one.
-//!
-//! Defaults are compiled in. Loading is unforgiving: a verifier serving something other than what
-//! its operator wrote answers `INVALID` for everything, which looks like a network with no provers.
+//! Loading is unforgiving: a verifier serving something other than what its operator wrote answers
+//! `INVALID` for everything, which looks like a network with no provers.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -21,7 +19,6 @@ use crate::{
 /// Verifying key length, for every proof system here.
 pub const PROGRAM_VK_LEN: usize = 32;
 
-/// Served when no configuration is given.
 const DEFAULT_PROOF_TYPES: &str = include_str!("../default_proof_types.toml");
 
 /// An immutable (proof system, guest, version) triple, and the key of the program it names.
@@ -83,7 +80,6 @@ struct Entry {
     verifier: Arc<dyn ProofVerifier>,
 }
 
-/// Every proof type this process serves.
 pub struct Registry {
     entries: BTreeMap<u8, Entry>,
 }
@@ -105,7 +101,7 @@ impl Registry {
             })?;
             let from_file = parse(&contents, &display)?;
 
-            // One of two entries for a proof type goes unserved, and the operator cannot see which.
+            // Otherwise one of the two goes unserved and the operator cannot see which.
             let mut seen = BTreeSet::new();
             for spec in &from_file {
                 if !seen.insert(spec.proof_type) {
@@ -119,8 +115,8 @@ impl Registry {
             for spec in from_file {
                 let proof_type = spec.proof_type;
                 if specs.insert(proof_type, spec).is_some() {
-                    // Legitimate, but the quiet way to break a node: a wrong key here rejects every
-                    // proof of a type the network does gossip.
+                    // Legitimate, but a wrong key here rejects every proof of a type the network
+                    // does gossip.
                     warn!("Proof type {proof_type} replaces the compiled-in default");
                 }
             }
@@ -128,7 +124,6 @@ impl Registry {
 
         let mut entries = BTreeMap::new();
         for (proof_type, spec) in specs {
-            // `ProofType` 0 is outside the assignable range.
             if proof_type == 0 {
                 return Err(LoadError::ReservedProofType);
             }
@@ -158,8 +153,6 @@ impl Registry {
         Ok(Self { entries })
     }
 
-    /// The verifier for `proof_type`, or `None` if this process does not serve it.
-    ///
     /// Shared, not borrowed: verifying runs off the async runtime and outlives the handler.
     pub fn verifier(&self, proof_type: u8) -> Option<Arc<dyn ProofVerifier>> {
         self.entries

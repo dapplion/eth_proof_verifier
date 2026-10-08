@@ -1,16 +1,12 @@
 # Proof types this binary serves out of the box.
 #
-# A proof type names an immutable triple of proof system, guest program and version. It is not a
-# proof system on its own: a proof is checked against one specific compiled program, so changing
-# the guest or either version takes a NEW proof type rather than a change to an existing one.
+# A proof type is an immutable (proof system, guest, version) triple: changing the guest or either
+# version takes a NEW number, never an edit to an existing entry. EIP-8025 fixes the supported set
+# at {1, 2, 3} but assigns no meanings, so these assignments are ours, and a `--proof-types` file
+# overrides or extends them by number.
 #
-# EIP-8025 fixes the supported set at {1, 2, 3} but assigns no meanings to the numbers, and expects
-# further values to be socialised out of band. These assignments are therefore ours, and a `--proof-types`
-# file overrides or extends them by proof type number.
-#
-# Guest programs and their verifying keys come from eth-act/ere-guests v0.17.1. A verifying key is
-# tied to the guest build, so `proof_system_version` records the version the guest was compiled and
-# proved with. It is not the verifier's own version: one pinned verifier reads several of these.
+# Keys come from eth-act/ere-guests v0.17.1. `proof_system_version` is the version the guest was
+# proved with, not the verifier's own: one pinned verifier reads several.
 
 [[proof_types]]
 proof_type = 1

@@ -1,5 +1,3 @@
-//! Proof systems this binary can verify against.
-//!
 //! A proof system turns proof bytes into the bytes the guest committed to. Whether those are the
 //! right public input is decided in [`crate::public_input`].
 
@@ -11,12 +9,10 @@ use serde::{Deserialize, Serialize};
 
 /// A verifier bound to one compiled guest program.
 pub trait ProofVerifier: Send + Sync + 'static {
-    /// Verify `proof` and return the bytes the guest committed to.
     fn verify(&self, proof: &[u8]) -> Result<Vec<u8>, Rejection>;
 }
 
-/// Why a proof was not accepted. Both answer `INVALID`, but only `Unverified` says anything about a
-/// payload.
+/// Both answer `INVALID`, but only `Unverified` says anything about a payload.
 #[derive(Debug, thiserror::Error)]
 pub enum Rejection {
     /// Not a proof of the shape this proof system expects.
@@ -37,7 +33,6 @@ impl Rejection {
     }
 }
 
-/// A verifying key that does not belong to its proof system.
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct InvalidProgramVk(String);
@@ -48,7 +43,6 @@ impl InvalidProgramVk {
     }
 }
 
-/// The proof systems this binary was built with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ProofSystem {
@@ -62,8 +56,6 @@ impl ProofSystem {
         }
     }
 
-    /// Build a verifier for the program `program_vk` names.
-    ///
     /// Called once per proof type at startup. SP1 builds its recursion verifier here, not per
     /// request.
     pub fn verifier(self, program_vk: &[u8]) -> Result<Box<dyn ProofVerifier>, InvalidProgramVk> {

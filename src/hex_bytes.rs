@@ -1,4 +1,4 @@
-//! Strict fixed-length hex decoding, shared so that every hex input accepts the same thing.
+//! Strict fixed-length hex decoding, shared so every hex input accepts the same thing.
 
 use std::fmt::Display;
 
@@ -35,21 +35,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accepts_one_prefix_or_none() {
+    fn decodes_n_bytes_with_at_most_one_prefix() {
         for value in ["abababab", "0xabababab", "0Xabababab", "ABABABAB"] {
             assert_eq!(decode::<4>(value).expect(value), [0xab; 4]);
         }
-    }
-
-    #[test]
-    fn rejects_a_repeated_prefix() {
-        assert!(decode::<4>("0x0xabababab").is_err());
-    }
-
-    #[test]
-    fn rejects_the_wrong_length() {
-        assert!(decode::<4>("ababab").is_err());
-        assert!(decode::<4>("ababababab").is_err());
-        assert!(decode::<4>("").is_err());
+        for value in ["0x0xabababab", "ababab", "ababababab", ""] {
+            assert!(decode::<4>(value).is_err(), "{value}");
+        }
     }
 }

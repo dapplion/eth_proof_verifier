@@ -1,8 +1,6 @@
-//! The public input that binds a proof to one payload.
-//!
-//! The spec says to use `hash_tree_root(public_input)`. No guest commits a root. Every guest commits
+//! The spec says to use `hash_tree_root(public_input)`. No guest commits a root: every guest commits
 //! the plain SSZ of `StatelessValidationResult`, so a proof binds to those bytes instead. The
-//! encoding has a fixed length, so the binding is as tight.
+//! encoding is fixed-length, so the binding is as tight.
 
 /// root (32) ++ `successful_validation` (1) ++ `chain_id` (8) ++ `schema_id` (2).
 pub const ENCODED_LEN: usize = 43;
@@ -10,7 +8,6 @@ pub const ENCODED_LEN: usize = 43;
 /// Committed by a guest that could not decode its input. No beacon node derives it.
 pub const UNDECODABLE_SCHEMA_ID: u16 = 0;
 
-/// The four fields a beacon node derives and a guest commits to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PublicInput {
     /// `hash_tree_root` of the `NewPayloadRequest` the proof certifies.
@@ -33,8 +30,6 @@ impl PublicInput {
         encoded
     }
 
-    /// Whether `committed` is this public input.
-    ///
     /// Longer is allowed, because a proof system can pad the guest output to a fixed width. The
     /// padding must be zero, so nothing the guest committed goes unchecked.
     pub fn is_committed_by(&self, committed: &[u8]) -> bool {
@@ -81,8 +76,8 @@ mod tests {
         assert!(!public_input().is_committed_by(&padded));
     }
 
-    /// Every field has to reach the encoding. A field left out of it would make two different
-    /// public inputs compare equal, and a proof of one payload would answer for another.
+    /// The comparison must cover the whole encoding. Narrowed to the root, a proof of one payload
+    /// would answer for another on the same chain.
     #[test]
     fn tells_apart_inputs_that_differ_in_any_one_field() {
         let others = [
