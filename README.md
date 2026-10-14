@@ -31,6 +31,10 @@ Immutable `(system, guest, version)` triples. `--proof-types FILE` adds more. `-
 | 1 | reth 0.1.0-rc.3 | SP1 6.4.0 |
 | 2 | ethrex 27.0.0 | SP1 6.4.0 |
 
+## Mock proofs
+
+`--mock-proofs`, for devnets only, accepts the mock proofs of [zkboost](https://github.com/eth-act/zkboost)'s mock zkVMs: an SSZ `MockProof { public_values: List[byte], proof: List[byte] }`. It is not verified cryptographically, but its public values are checked against the public input like a real proof's. Any other proof is verified as usual. Prysm's `--zkvm-mock-proofs` and eth-act Lighthouse's `--proof-engine-mock-proofs` do the same.
+
 ## Adding a proving system
 
 PRs welcome: implement `ProofVerifier::verify`, add a row. See `src/backend/zisk.rs`, ~140 lines. Bring a crates.io verifier at a pinned version, a published verifying key per guest, and a real proof as a fixture. OpenVM waits on the first: its guests are built for 2.1.0-preview and crates.io carries 2.0.x.

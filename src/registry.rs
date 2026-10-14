@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 use crate::{
-    backend::{ProofSystem, ProofVerifier},
+    backend::{ProofSystem, ProofVerifier, mock::MockProofs},
     hex_bytes,
 };
 
@@ -290,6 +290,15 @@ impl Registry {
         }
 
         Ok(Self { entries })
+    }
+
+    /// Accept zkboost's mock proofs for every proof type served. Devnets only: see
+    /// [`crate::backend::mock`].
+    pub fn with_mock_proofs(mut self) -> Self {
+        for entry in self.entries.values_mut() {
+            entry.verifier = Arc::new(MockProofs(entry.verifier.clone()));
+        }
+        self
     }
 
     /// Shared, not borrowed: verifying runs off the async runtime and outlives the handler.
