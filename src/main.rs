@@ -4,7 +4,7 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use clap::Parser;
 use eth_proof_verifier::{api, registry::Registry};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
@@ -19,6 +19,10 @@ struct Config {
     /// Lighthouse's `--proof-engine` file, served instead of the compiled-in proof types.
     #[arg(long, value_name = "FILE", conflicts_with = "proof_types")]
     proof_engine: Option<PathBuf>,
+    /// DEVNETS ONLY. Accept the mock proofs of zkboost's mock zkVMs (an SSZ `MockProof`) without
+    /// verifying them cryptographically, but still check their public values.
+    #[arg(long)]
+    mock_proofs: bool,
 }
 
 #[tokio::main]
@@ -42,6 +46,12 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let registry = match &config.proof_engine {
         Some(path) => Registry::load_proof_engine(path)?,
         None => Registry::load(config.proof_types.as_deref())?,
+    };
+    let registry = if config.mock_proofs {
+        warn!("Accepting mock proofs, which prove nothing: for devnets only");
+        registry.with_mock_proofs()
+    } else {
+        registry
     };
     for spec in registry.specs() {
         info!("Serving proof type {spec}");

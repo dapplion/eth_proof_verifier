@@ -1,6 +1,7 @@
 //! A proof system turns proof bytes into the bytes the guest committed to. Whether those are the
 //! right public input is decided in [`crate::public_input`].
 
+pub mod mock;
 pub mod sp1;
 pub mod zisk;
 
