@@ -144,9 +144,10 @@ mod tests {
     #[test]
     fn verifies_anything_else_as_a_real_proof() {
         let verifier = MockProofs(Arc::new(Real));
-        assert!(matches!(
-            verifier.verify(&[0xff; 64]),
-            Err(Rejection::Malformed(_))
-        ));
+        match verifier.verify(&[0xff; 64]) {
+            Err(Rejection::Malformed(_)) => {}
+            Err(Rejection::Unverified(reason)) => panic!("unexpected rejection: {reason}"),
+            Ok(committed) => panic!("accepted as a mock proof: {committed:?}"),
+        }
     }
 }
