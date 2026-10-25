@@ -33,7 +33,7 @@ Immutable `(system, guest, version)` triples. `--proof-types FILE` adds more. `-
 
 ## Mock proofs
 
-`--mock-proofs`, for devnets only, accepts the mock proofs of [zkboost](https://github.com/eth-act/zkboost)'s mock zkVMs: an SSZ `MockProof { public_values: List[byte], proof: List[byte] }`. It is not verified cryptographically, but its public values are checked against the public input like a real proof's. Any other proof is verified as usual. Prysm's `--zkvm-mock-proofs` and eth-act Lighthouse's `--proof-engine-mock-proofs` do the same.
+`--mock-proofs`, for devnets only, accepts the mock proofs of [zkboost](https://github.com/eth-act/zkboost)'s mock zkVMs: an SSZ `MockProof { public_values: List[byte], proof: List[byte] }`. It is not verified cryptographically, but its public values are checked against the public input like a real proof's. Any other proof is verified as usual. zkboost numbers its proof types differently (ethrex SP1 is 2 in both, reth SP1 is 5 there and 1 here), so configure its mock zkVM as type 2 or serve its numbering with `--proof-engine FILE`. Prysm's `--zkvm-mock-proofs` and eth-act Lighthouse's `--proof-engine-mock-proofs` do the same.
 
 ## Adding a proving system
 
